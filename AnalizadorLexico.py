@@ -1,7 +1,6 @@
-# AnalizadorLexico_v2.py
 from dataclasses import dataclass
 import re, sys, os
-from typing import List
+from typing import List, Optional
 
 @dataclass
 class Token:
@@ -12,13 +11,16 @@ class Token:
 
 class Lexer:
     KEYWORDS = {"let":"LET","const":"CONST","if":"IF","else":"ELSE","while":"WHILE","for":"FOR","function":"FUNCTION","return":"RETURN","true":"TRUE","false":"FALSE"}
+    OPERATORS = {"==":"EQEQ","!=":"NEQ","<=":"LE",">=":"GE","&&":"AND_AND","||":"OR_OR","=":"EQ","<":"LT",">":"GT","+":"PLUS","-":"MINUS","*":"STAR","/":"SLASH","%":"PERCENT","!":"BANG",".":"DOT",",":["COMMA"][0],";":"SEMICOLON","(":"LPAREN",")":"RPAREN","{":"LBRACE","}":"RBRACE","[":"LBRACKET","]":"RBRACKET"}
+    OPERATOR_KEYS = sorted(OPERATORS.keys(), key=lambda s:(-len(s), s))
+
     _re_id_start = re.compile(r"[A-Za-z]")
     _re_id_part  = re.compile(r"[A-Za-z0-9_]")
     _re_digit    = re.compile(r"\d")
     _re_number   = re.compile(r"(?:\d+\.\d*|\.\d+|\d+)")
 
     def __init__(self, s:str):
-        self.source = s.replace("\r\n","\n").replace("\r","\n")
+        self.source=s.replace("\r\n","\n").replace("\r","\n")
         self.length=len(self.source); self.pos=0; self.line=1; self.col=1
 
     def _peek(self,n:int=0)->str:
@@ -33,6 +35,11 @@ class Lexer:
             if ch=="\n": self.line+=1; self.col=1
             else: self.col+=1
         return ch
+
+    def _match(self, text:str)->bool:
+        if self.source.startswith(text, self.pos):
+            self._advance(len(text)); return True
+        return False
 
     def _lex_number(self)->Token:
         L,C=self.line,self.col
@@ -51,6 +58,13 @@ class Lexer:
         t=self.KEYWORDS.get(lex,"ID")
         return Token(t,lex,L,C)
 
+    def _lex_operator_or_delim(self)->Optional[Token]:
+        for op in self.OPERATOR_KEYS:
+            if self._match(op):
+                col_start = self.col - len(op)
+                return Token(self.OPERATORS[op], op, self.line, col_start)
+        return None
+
     def tokenize(self)->List[Token]:
         out:List[Token]=[]
         while True:
@@ -61,17 +75,22 @@ class Lexer:
                 out.append(self._lex_number()); continue
             if self._re_id_start.match(ch):
                 out.append(self._lex_identifier_or_keyword()); continue
-            self._advance() # ignora resto en v2
+            op=self._lex_operator_or_delim()
+            if op: out.append(op); continue
+            # ignora caracteres desconocidos
+            self._advance()
         return out
 
 def main():
-    path="Entrada.txt"; import os,sys
+    path="Entrada.txt"
     if len(sys.argv)>=2: path=sys.argv[1]
     if not os.path.exists(path): print(f"ERROR: no se encontró '{path}'"); sys.exit(1)
     with open(path,"r",encoding="utf-8") as f: src=f.read()
     lx=Lexer(src); toks=lx.tokenize()
-    print(f"{'LINE':>4} {'COL':>4}  {'TYPE':<10}  LEXEME")
-    print("-"*50)
+    print(f"{'LINE':>4} {'COL':>4}  {'TYPE':<12}  LEXEME")
+    print("-"*60)
     for t in toks:
-        print(f"{t.line:4} {t.column:4}  {t.type:<10}  {t.lexeme}")
+        disp=t.lexeme.replace("\n","\\n")
+        print(f"{t.line:4} {t.column:4}  {t.type:<12}  {disp}")
+
 if __name__=="__main__": main()
