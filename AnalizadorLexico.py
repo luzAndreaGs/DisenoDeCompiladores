@@ -41,24 +41,36 @@ class Lexer:
             self._advance(len(text)); return True
         return False
 
+    def _skip_ws_and_comments(self):
+        while True:
+            ch=self._peek()
+            if ch in (" ","\t","\f","\v","\n"):
+                self._advance(); continue
+            if ch=="/" and self._peek(1)=="/":
+                start_line,start_col=self.line,self.col
+                self._advance(2)
+                closed=False
+                while True:
+                    if self._peek()=="\0":
+                        raise Exception(f"[L{start_line},C{start_col}] Comentario //...// sin cerrar")
+                    if self._peek()=="/" and self._peek(1)=="/":
+                        self._advance(2); closed=True; break
+                    self._advance()
+                if closed: continue
+            break
+
     def _lex_string(self)->Token:
         L,C=self.line,self.col
-        assert self._peek()=='"'
-        self._advance()
+        assert self._peek()=='"'; self._advance()
         buf=[]
         while True:
             ch=self._peek()
-            if ch=="\0":
-                # en v4, cadenas sin cerrar se devuelven truncadas como STRING
-                break
-            if ch=='"':
-                self._advance(); break
+            if ch=="\0": break
+            if ch=='"': self._advance(); break
             if ch=='\\':
-                self._advance()
-                esc=self._peek()
+                self._advance(); esc=self._peek()
                 mapping={'"':'"','\\':'\\','n':'\n','t':'\t','r':'\r'}
-                buf.append(mapping.get(esc, esc))
-                self._advance()
+                buf.append(mapping.get(esc, esc)); self._advance()
             else:
                 buf.append(ch); self._advance()
         return Token("STRING","".join(buf),L,C)
@@ -80,7 +92,7 @@ class Lexer:
         t=self.KEYWORDS.get(lex,"ID")
         return Token(t,lex,L,C)
 
-    def _lex_operator_or_delim(self)->Optional[Token]:
+    def _lex_operator_or_delim(self):
         for op in self.OPERATOR_KEYS:
             if self._match(op):
                 col_start=self.col-len(op)
@@ -90,12 +102,11 @@ class Lexer:
     def tokenize(self)->List[Token]:
         out:List[Token]=[]
         while True:
+            self._skip_ws_and_comments()
             ch=self._peek()
             if ch=="\0": out.append(Token("EOF","",self.line,self.col)); break
-            if ch in (" ","\t","\f","\v","\n"): self._advance(); continue
             if ch=='"': out.append(self._lex_string()); continue
-            if self._re_digit.match(ch) or (ch=="." and self._re_digit.match(self._peek(1))):
-                out.append(self._lex_number()); continue
+            if self._re_digit.match(ch) or (ch=="." and self._re_digit.match(self._peek(1))): out.append(self._lex_number()); continue
             if self._re_id_start.match(ch): out.append(self._lex_identifier_or_keyword()); continue
             op=self._lex_operator_or_delim()
             if op: out.append(op); continue
@@ -103,7 +114,7 @@ class Lexer:
         return out
 
 def main():
-    path="Entrada.txt"; import sys,os
+    path="Entrada.txt"
     if len(sys.argv)>=2: path=sys.argv[1]
     if not os.path.exists(path): print(f"ERROR: no se encontró '{path}'"); sys.exit(1)
     with open(path,"r",encoding="utf-8") as f: src=f.read()
