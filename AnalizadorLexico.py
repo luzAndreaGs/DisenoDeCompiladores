@@ -1,5 +1,6 @@
+
 from dataclasses import dataclass
-import re, sys, os
+import re, sys, os, csv
 from typing import List, Optional
 
 @dataclass
@@ -47,16 +48,14 @@ class Lexer:
             if ch in (" ","\t","\f","\v","\n"):
                 self._advance(); continue
             if ch=="/" and self._peek(1)=="/":
-                start_line,start_col=self.line,self.col
                 self._advance(2)
-                closed=False
                 while True:
                     if self._peek()=="\0":
-                        raise Exception(f"[L{start_line},C{start_col}] Comentario //...// sin cerrar")
+                        break 
                     if self._peek()=="/" and self._peek(1)=="/":
-                        self._advance(2); closed=True; break
+                        self._advance(2); break
                     self._advance()
-                if closed: continue
+                continue
             break
 
     def _lex_string(self)->Token:
@@ -118,11 +117,19 @@ def main():
     if len(sys.argv)>=2: path=sys.argv[1]
     if not os.path.exists(path): print(f"ERROR: no se encontró '{path}'"); sys.exit(1)
     with open(path,"r",encoding="utf-8") as f: src=f.read()
+    from csv import writer
     lx=Lexer(src); toks=lx.tokenize()
+
     print(f"{'LINE':>4} {'COL':>4}  {'TYPE':<12}  LEXEME")
     print("-"*60)
     for t in toks:
         disp=t.lexeme.replace("\n","\\n")
         print(f"{t.line:4} {t.column:4}  {t.type:<12}  {disp}")
+
+    with open("tokens.csv","w",newline="",encoding="utf-8") as cf:
+        w=writer(cf); w.writerow(["line","column","type","lexeme"])
+        for t in toks:
+            w.writerow([t.line,t.column,t.type,t.lexeme])
+    print("\nSe escribió la tabla de tokens en 'tokens.csv'.")
 
 if __name__=="__main__": main()
