@@ -1,4 +1,3 @@
-
 from dataclasses import dataclass
 import re, sys, os, csv
 from typing import List, Optional
@@ -10,6 +9,11 @@ class Token:
     line: int
     column: int
 
+class LexerError(Exception):
+    def __init__(self, message: str, line: int, column: int):
+        super().__init__(f"[L{line},C{column}] {message}")
+        self.line=line; self.column=column
+
 class Lexer:
     KEYWORDS = {"let":"LET","const":"CONST","if":"IF","else":"ELSE","while":"WHILE","for":"FOR","function":"FUNCTION","return":"RETURN","true":"TRUE","false":"FALSE"}
     OPERATORS = {"==":"EQEQ","!=":"NEQ","<=":"LE",">=":"GE","&&":"AND_AND","||":"OR_OR","=":"EQ","<":"LT",">":"GT","+":"PLUS","-":"MINUS","*":"STAR","/":"SLASH","%":"PERCENT","!":"BANG",".":"DOT",",":"COMMA",";":"SEMICOLON","(":"LPAREN",")":"RPAREN","{":"LBRACE","}":"RBRACE","[":"LBRACKET","]":"RBRACKET"}
@@ -18,7 +22,7 @@ class Lexer:
     _re_id_start = re.compile(r"[A-Za-z]")
     _re_id_part  = re.compile(r"[A-Za-z0-9_]")
     _re_digit    = re.compile(r"\d")
-    _re_number   = re.compile(r"(?:\d+\.\d*|\.\d+|\d+)")
+    _re_number   = re.compile(r"(?:\d+\.\d*|\.\d+|\d+)(?:[eE][+-]?\d+)?")
 
     def __init__(self, s:str):
         self.source=s.replace("\r\n","\n").replace("\r","\n")
@@ -48,10 +52,11 @@ class Lexer:
             if ch in (" ","\t","\f","\v","\n"):
                 self._advance(); continue
             if ch=="/" and self._peek(1)=="/":
+                start_line,start_col=self.line,self.col
                 self._advance(2)
                 while True:
                     if self._peek()=="\0":
-                        break 
+                        raise LexerError("Comentario //...// sin cerrar", start_line, start_col)
                     if self._peek()=="/" and self._peek(1)=="/":
                         self._advance(2); break
                     self._advance()
@@ -64,12 +69,16 @@ class Lexer:
         buf=[]
         while True:
             ch=self._peek()
-            if ch=="\0": break
+            if ch=="\0":
+                raise LexerError("Cadena sin cerrar", L, C)
             if ch=='"': self._advance(); break
             if ch=='\\':
                 self._advance(); esc=self._peek()
                 mapping={'"':'"','\\':'\\','n':'\n','t':'\t','r':'\r'}
-                buf.append(mapping.get(esc, esc)); self._advance()
+                if esc in mapping:
+                    buf.append(mapping[esc]); self._advance()
+                else:
+                    buf.append('\\'+esc); self._advance()
             else:
                 buf.append(ch); self._advance()
         return Token("STRING","".join(buf),L,C)
@@ -109,7 +118,7 @@ class Lexer:
             if self._re_id_start.match(ch): out.append(self._lex_identifier_or_keyword()); continue
             op=self._lex_operator_or_delim()
             if op: out.append(op); continue
-            self._advance()
+            raise LexerError(f"Símbolo no reconocido: '{ch}'", self.line, self.col)
         return out
 
 def main():
@@ -117,19 +126,20 @@ def main():
     if len(sys.argv)>=2: path=sys.argv[1]
     if not os.path.exists(path): print(f"ERROR: no se encontró '{path}'"); sys.exit(1)
     with open(path,"r",encoding="utf-8") as f: src=f.read()
-    from csv import writer
-    lx=Lexer(src); toks=lx.tokenize()
-
-    print(f"{'LINE':>4} {'COL':>4}  {'TYPE':<12}  LEXEME")
-    print("-"*60)
-    for t in toks:
-        disp=t.lexeme.replace("\n","\\n")
-        print(f"{t.line:4} {t.column:4}  {t.type:<12}  {disp}")
-
-    with open("tokens.csv","w",newline="",encoding="utf-8") as cf:
-        w=writer(cf); w.writerow(["line","column","type","lexeme"])
+    lx=Lexer(src)
+    try:
+        toks=lx.tokenize()
+        print(f"{'LINE':>4} {'COL':>4}  {'TYPE':<12}  LEXEME")
+        print("-"*60)
         for t in toks:
-            w.writerow([t.line,t.column,t.type,t.lexeme])
-    print("\nSe escribió la tabla de tokens en 'tokens.csv'.")
+            disp=t.lexeme.replace("\n","\\n")
+            print(f"{t.line:4} {t.column:4}  {t.type:<12}  {disp}")
+        with open("tokens.csv","w",newline="",encoding="utf-8") as cf:
+            w=csv.writer(cf); w.writerow(["line","column","type","lexeme"])
+            for t in toks: w.writerow([t.line,t.column,t.type,t.lexeme])
+        print("\nSe escribió la tabla de tokens en 'tokens.csv'.")
+    except LexerError as e:
+        print("ERROR LÉXICO:", str(e))
+        sys.exit(2)
 
 if __name__=="__main__": main()
