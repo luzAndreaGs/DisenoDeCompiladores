@@ -12,6 +12,7 @@ class Token:
     line: int
     column: int
 
+
 class LexerError(Exception):
     def __init__(self, message: str, line: int, column: int):
         self.msg = message
