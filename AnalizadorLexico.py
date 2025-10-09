@@ -73,7 +73,6 @@ class Lexer:
     }
     OPERATOR_KEYS = sorted(OPERATORS.keys(), key=lambda s: (-len(s), s))
 
-    # Patrones
     _re_id_start = re.compile(r"[A-Za-z]")          # IDs deben iniciar con letra
     _re_id_part  = re.compile(r"[A-Za-z0-9_]")      # luego pueden incluir dígitos y _
     _re_digit    = re.compile(r"\d")
